@@ -430,7 +430,7 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
     if (self.presetCamera == AVCaptureDevicePositionUnspecified) {
       self.presetCamera = AVCaptureDevicePositionBack;
     }
-
+    
     AVCaptureStillImageOutput *stillImageOutput = [[AVCaptureStillImageOutput alloc] init];
     if ([self.session canAddOutput:stillImageOutput])
     {
@@ -438,14 +438,14 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
       [self.session addOutput:stillImageOutput];
       self.stillImageOutput = stillImageOutput;
     }
-
+    
     AVCaptureMovieFileOutput *movieFileOutput = [[AVCaptureMovieFileOutput alloc] init];
     if ([self.session canAddOutput:movieFileOutput])
     {
       [self.session addOutput:movieFileOutput];
       self.movieFileOutput = movieFileOutput;
     }
-
+    
     AVCaptureMetadataOutput *metadataOutput = [[AVCaptureMetadataOutput alloc] init];
     if ([self.session canAddOutput:metadataOutput]) {
       [metadataOutput setMetadataObjectsDelegate:self queue:self.sessionQueue];
@@ -453,7 +453,7 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
       [metadataOutput setMetadataObjectTypes:self.barCodeTypes];
       self.metadataOutput = metadataOutput;
     }
-
+    
     __weak RCTCameraManager *weakSelf = self;
     [self setRuntimeErrorHandlingObserver:[NSNotificationCenter.defaultCenter addObserverForName:AVCaptureSessionRuntimeErrorNotification object:self.session queue:nil usingBlock:^(NSNotification *note) {
       RCTCameraManager *strongSelf = weakSelf;
@@ -462,10 +462,21 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
         [strongSelf.session startRunning];
       });
     }]];
-
-    [self.session startRunning];
+    
+    // Hacky temporary workaround. When I have time I'll move this to where it should be. - Forrest VdBorgh Nov 14, 2017
+    AVAuthorizationStatus authStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+    if(authStatus == AVAuthorizationStatusAuthorized)
+    {
+      [self.session startRunning];
+    }
+    else if(authStatus == AVAuthorizationStatusRestricted) {
+      // fail quietly
+    }
+    
+    //    [self.session startRunning];
   });
 }
+
 
 - (void)stopSession {
 #if TARGET_IPHONE_SIMULATOR
@@ -475,15 +486,33 @@ RCT_EXPORT_METHOD(hasFlash:(RCTPromiseResolveBlock)resolve reject:(RCTPromiseRej
   dispatch_async(self.sessionQueue, ^{
     self.camera = nil;
     [self.previewLayer removeFromSuperlayer];
-    [self.session commitConfiguration];
-    [self.session stopRunning];
-    for(AVCaptureInput *input in self.session.inputs) {
-      [self.session removeInput:input];
+    
+    AVAuthorizationStatus authStatus = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];
+    if(authStatus == AVAuthorizationStatusAuthorized)
+    {
+      [self.session commitConfiguration];
+      [self.session stopRunning];
+      for(AVCaptureInput *input in self.session.inputs) {
+        [self.session removeInput:input];
+      }
+      
+      for(AVCaptureOutput *output in self.session.outputs) {
+        [self.session removeOutput:output];
+      }
     }
-
-    for(AVCaptureOutput *output in self.session.outputs) {
-      [self.session removeOutput:output];
+    else if(authStatus == AVAuthorizationStatusRestricted) {
+      // fail quietly
     }
+    
+    //    [self.session commitConfiguration];
+    //    [self.session stopRunning];
+    //    for(AVCaptureInput *input in self.session.inputs) {
+    //      [self.session removeInput:input];
+    //    }
+    //
+    //    for(AVCaptureOutput *output in self.session.outputs) {
+    //      [self.session removeOutput:output];
+    //    }
   });
 }
 
